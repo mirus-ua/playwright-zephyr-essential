@@ -3,16 +3,17 @@ import type { ZephyrSquadOptions } from './zephyr-squad.service';
 
 import { gray } from 'picocolors';
 
-import { archiveReport } from './archive-report';
 import { convertStatus } from './convert-status';
-import { createJsonReport } from './create-report-file';
+import { createJUnitXmlReport } from './create-report-file';
 import { validateSquadOptions } from './validate-squad-options';
 import { ZephyrSquadService } from './zephyr-squad.service';
+import { join } from 'path';
 
 type ZephyrSquadTestResult = {
   result: string;
   testCase: {
     key: string;
+    title: string;
     comment: string | undefined;
   };
 };
@@ -37,6 +38,8 @@ export default class ZephyrSquadReporter implements Reporter {
     if (test.title.match(this.testCaseKeyPattern) && test.title.match(this.testCaseKeyPattern)!.length > 1) {
       const [, testCaseId] = test.title.match(this.testCaseKeyPattern)!;
       const testCaseKey = `${this.projectKey}-${testCaseId}`;
+      // Strip the leading [suffix] bracket from the title for a clean display name
+      const title = test.title.replace(this.testCaseKeyPattern, '').trim();
       const status = convertStatus(result.status);
       const comment = result.error
         ? `<b>❌ Error Message: </b> <br> <span style="color: rgb(226, 80, 65);">${result.error?.message?.replaceAll(
@@ -52,6 +55,7 @@ export default class ZephyrSquadReporter implements Reporter {
         result: status,
         testCase: {
           key: testCaseKey,
+          title,
           comment,
         },
       });
@@ -61,12 +65,11 @@ export default class ZephyrSquadReporter implements Reporter {
   async onEnd() {
     if (this.testResults.length > 0) {
       const testResultsPath = 'test-results/zephyr';
-      const zephyrReportName = `zephyr-squad-report-${new Date().getTime()}.json`;
-      createJsonReport(zephyrReportName, testResultsPath, this.testResults);
+      const reportName = `zephyr-squad-report-${new Date().getTime()}.xml`;
+      createJUnitXmlReport(reportName, testResultsPath, this.testResults);
 
-      const zephyrReportPath = archiveReport(zephyrReportName, testResultsPath);
-
-      await this.zephyrService.createRun(zephyrReportPath);
+      const reportPath = join(process.cwd(), testResultsPath, reportName);
+      await this.zephyrService.createRun(reportPath);
     } else {
       console.log(gray(`[zephyr squad reporter]: There's no Zephyr test case id in this spec file`));
     }

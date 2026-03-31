@@ -1,157 +1,121 @@
 import type { PathLike } from 'fs';
 import type { AxiosError } from 'axios';
 
-import { createHmac, createHash } from 'crypto';
 import axios from 'axios';
 import { getBorderCharacters, table } from 'table';
 import { inspect } from 'util';
 import { createReadStream } from 'fs';
-import { bold, green, gray } from 'picocolors';
+import { bold, green, gray, yellow } from 'picocolors';
 import FormData from 'form-data';
 import { validateSquadOptions } from './validate-squad-options';
 
 export interface ZephyrSquadOptions {
-  accessKey: string;
-  secretKey: string;
-  accountId: string;
+  token: string;
   projectKey: string;
-  testCycle?: ZephyrSquadTestCycle;
+  /** Override the auto-generated test cycle name.
+   *  Defaults to "Automated Playwright run - <UTC timestamp>". */
+  cycleName?: string;
 }
 
-export type ZephyrSquadTestCycle = {
-  name?: string;
-  versionName?: string;
-  folderName?: string;
-  createNewCycle?: boolean;
-  createNewFolder?: boolean;
-};
-
-function isAxiosError(error: any): error is AxiosError {
-  return error.isAxiosError === true;
+function isAxiosError(error: unknown): error is AxiosError {
+  return (error as AxiosError).isAxiosError === true;
 }
 
-/**
- * Generates a per-request JWT token for Zephyr Squad Cloud (formerly Zephyr for Jira Cloud).
- *
- * Algorithm (HMAC-SHA256):
- *   1. Build the canonical query string hash (qsh):
- *      canonical = "<METHOD>&<url_path>&<query_string>"
- *      qsh = SHA-256(canonical).hex()
- *   2. Build JWT payload: { sub, qsh, iss, iat, exp }
- *   3. Sign: HMAC-SHA256(secretKey, base64url(header) + "." + base64url(payload))
- *
- * References:
- *   https://zephyrdocs.atlassian.net/wiki/spaces/ZFJCLOUD/pages/2000060602
- *   https://zephyrdocs.atlassian.net/wiki/spaces/ZFJCLOUD/pages/1925120024/REST+API
- */
-export function generateSquadJwt(
-  method: string,
-  urlPath: string,
-  queryString: string,
-  accessKey: string,
-  secretKey: string,
-  accountId: string,
-): string {
-  const canonical = `${method.toUpperCase()}&${urlPath}&${queryString}`;
-  const qsh = createHash('sha256').update(canonical).digest('hex');
+function maskToken(token: string): string {
+  if (token.length <= 14) return '***';
+  return `${token.slice(0, 10)}...${token.slice(-4)} (${token.length} chars)`;
+}
 
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const payload = {
-    sub: accountId,
-    qsh,
-    iss: accessKey,
-    iat: now,
-    exp: now + 3600,
-  };
-
-  const b64Header = Buffer.from(JSON.stringify(header)).toString('base64url');
-  const b64Payload = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const signingInput = `${b64Header}.${b64Payload}`;
-  const signature = createHmac('sha256', secretKey).update(signingInput).digest('base64url');
-
-  return `${signingInput}.${signature}`;
+function isErrorBody(data: unknown): boolean {
+  if (data == null || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  if (typeof d['error'] === 'string') return true;
+  if (typeof d['message'] === 'string' && /token|unauthorized|invalid|forbidden|error/i.test(d['message'])) return true;
+  return false;
 }
 
 export class ZephyrSquadService {
-  private readonly accessKey: string;
-  private readonly secretKey: string;
-  private readonly accountId: string;
+  private readonly token: string;
   private readonly projectKey: string;
-  private readonly testCycle: ZephyrSquadTestCycle | undefined;
-  private readonly baseUrl = 'https://prod-vortexapi.zephyr4jiracloud.com';
-  private readonly defaultRunName = `Automated Playwright run - [${new Date().toUTCString()}]`;
+  private readonly cycleName: string;
+  private readonly baseUrl = 'https://prod-api.zephyr4jiracloud.com/v2';
 
   constructor(options: ZephyrSquadOptions) {
     validateSquadOptions(options);
 
-    this.accessKey = options.accessKey;
-    this.secretKey = options.secretKey;
-    this.accountId = options.accountId;
+    this.token = options.token.trim();
     this.projectKey = options.projectKey;
-    this.testCycle = options.testCycle;
+    this.cycleName = options.cycleName ?? `Automated Playwright run - [${new Date().toUTCString()}]`;
   }
 
   async createRun(testResults: PathLike) {
-    const urlPath = '/api/v1/automation/job/create';
-    const jwt = generateSquadJwt('POST', urlPath, '', this.accessKey, this.secretKey, this.accountId);
+    const url = `${this.baseUrl}/automations/executions/junit?projectKey=${this.projectKey}&autoCreateTestCases=false`;
 
-    const cycleOptions = this.testCycle ?? {};
     const data = new FormData();
-    data.append('file', createReadStream(testResults));
-    data.append('jobName', cycleOptions.name ?? this.defaultRunName);
-    data.append('automationFramework', 'Playwright');
-    data.append('projectKey', this.projectKey);
-    data.append('cycleName', cycleOptions.name ?? this.defaultRunName);
-    data.append('versionName', cycleOptions.versionName ?? 'Unscheduled');
-    data.append('createNewCycle', String(cycleOptions.createNewCycle ?? true));
-    data.append('createNewFolder', String(cycleOptions.createNewFolder ?? false));
-    data.append('accountId', this.accountId);
+    data.append('file', createReadStream(testResults), {
+      contentType: 'application/xml',
+      filename: 'results.xml',
+    });
+    data.append('testCycle', JSON.stringify({ name: this.cycleName }), {
+      contentType: 'application/json',
+      filename: 'blob',
+    });
 
-    if (cycleOptions.folderName) {
-      data.append('folderName', cycleOptions.folderName);
-    }
+    console.log(bold(yellow('\n[zephyr] ── request ──────────────────────────────────')));
+    console.log(`[zephyr] POST ${url}`);
+    console.log(`[zephyr] Authorization: Bearer ${maskToken(this.token)}`);
+    console.log(`[zephyr] projectKey: ${this.projectKey}`);
+    console.log(`[zephyr] cycleName:  ${this.cycleName}`);
 
     try {
       const response = await axios({
-        url: `${this.baseUrl}${urlPath}`,
+        url,
         method: 'POST',
         headers: {
-          accessKey: this.accessKey,
-          jwt,
+          Authorization: `Bearer ${this.token}`,
           ...data.getHeaders(),
         },
         data,
       });
 
-      if (response.status !== 200) throw new Error(`${response.status} - Failed to create automation job`);
+      console.log(bold(yellow('\n[zephyr] ── response ─────────────────────────────────')));
+      console.log(`[zephyr] HTTP ${response.status}`);
+      console.log(`[zephyr] body: ${inspect(response.data, { depth: 5, colors: true })}`);
 
-      const { message } = response.data as { message: string };
-      this.printReportDetails(message);
+      if (response.status < 200 || response.status >= 300 || isErrorBody(response.data)) {
+        throw new Error(`API error (HTTP ${response.status}): ${inspect(response.data)}`);
+      }
 
+      this.printReportDetails(response.data);
       return response.data;
     } catch (error) {
       this.handleAxiosError(error);
     }
   }
 
-  printReportDetails(message: string): void {
-    const tableData = [[bold(green(`✅ ${message}`))], [bold(gray('Check your Zephyr Squad project for the test cycle results.'))]];
+  printReportDetails(data: unknown): void {
+    const summary = data && typeof data === 'object' && 'message' in data ? String((data as { message: string }).message) : inspect(data);
+
+    const tableData = [[bold(green(`✅ ${summary}`))], [bold(gray('Check your Zephyr Essential project for the test cycle results.'))]];
 
     const report = table(tableData, {
       border: getBorderCharacters('norc'),
       singleLine: true,
     });
 
-    console.log(bold('\n📋 Zephyr Squad Report details:'));
+    console.log(bold('\n📋 Zephyr Essential Report details:'));
     console.log(report);
   }
 
   handleAxiosError(error: unknown): void {
     if (isAxiosError(error)) {
-      console.error(`Config: ${inspect(error.config)}`);
+      console.log(bold(yellow('\n[zephyr] ── axios error ──────────────────────────────')));
+      console.error(`[zephyr] message: ${error.message}`);
 
       if (error.response) {
+        console.error(`[zephyr] HTTP ${error.response.status}`);
+        console.error(`[zephyr] headers: ${inspect(error.response.headers)}`);
+        console.error(`[zephyr] body:    ${inspect(error.response.data)}`);
         throw new Error(
           `\nStatus: ${error.response.status} \nHeaders: ${inspect(error.response.headers)} \nData: ${inspect(error.response.data)}`,
         );

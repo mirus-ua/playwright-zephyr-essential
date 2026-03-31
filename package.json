@@ -1,9 +1,23 @@
 {
-  "name": "playwright-zephyr",
-  "version": "1.2.0",
-  "description": "Zephyr reporter for the Playwright",
+  "name": "playwright-zephyr-essential",
+  "version": "1.0.7",
+  "description": "Playwright reporter for Zephyr Scale Cloud, Zephyr Squad (Essential), and Zephyr Server/DC",
   "main": "lib/src/index.js",
   "types": "lib/src/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./lib/src/index.js",
+      "types": "./lib/src/index.d.ts"
+    },
+    "./cloud": {
+      "require": "./lib/src/cloud.js",
+      "types": "./lib/src/cloud.d.ts"
+    },
+    "./squad": {
+      "require": "./lib/src/squad.js",
+      "types": "./lib/src/squad.d.ts"
+    }
+  },
   "files": [
     "lib/src"
   ],
@@ -20,21 +34,24 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/elaichenkov/playwright-zephyr.git"
+    "url": "git+https://github.com/mirus-ua/playwright-zephyr-essential.git"
   },
   "keywords": [
     "playwright",
     "zephyr",
+    "zephyr-squad",
+    "zephyr-essential",
+    "zephyr-scale",
     "reporter",
     "typescript",
     "tools"
   ],
-  "author": "Yevhen Laichenkov <elaichenkov@gmail.com>",
+  "author": "mirus-ua",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/elaichenkov/playwright-zephyr/issues"
+    "url": "https://github.com/mirus-ua/playwright-zephyr-essential/issues"
   },
-  "homepage": "https://github.com/elaichenkov/playwright-zephyr#readme",
+  "homepage": "https://github.com/mirus-ua/playwright-zephyr-essential#readme",
   "devDependencies": {
     "@playwright/test": "^1.36.2",
     "prettier": "^3.0.1",
