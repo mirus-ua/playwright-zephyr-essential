@@ -33,7 +33,7 @@ export type JUnitTestResult = {
 // ANSI escape sequences (CSI, e.g. colour codes, and OSC, e.g. hyperlinks) that Playwright puts in error messages
 const ANSI_PATTERN = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
 // Anything outside the XML 1.0 Char production; one such character makes the whole report unparseable
-const INVALID_XML_CHARS = /[^\u0009\u000A\u000D -퟿-�\u{10000}-\u{10FFFF}]/gu;
+const INVALID_XML_CHARS = /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
 
 function sanitizeXml(text: string): string {
   return text.replace(ANSI_PATTERN, '').replace(INVALID_XML_CHARS, '');
