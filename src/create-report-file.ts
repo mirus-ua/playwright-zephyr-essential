@@ -30,8 +30,27 @@ export type JUnitTestResult = {
   };
 };
 
+// ANSI escape sequences (CSI, e.g. colour codes, and OSC, e.g. hyperlinks) that Playwright puts in error messages
+const ANSI_PATTERN = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
+// Anything outside the XML 1.0 Char production; one such character makes the whole report unparseable
+const INVALID_XML_CHARS = /[^\u0009\u000A\u000D -퟿-�\u{10000}-\u{10FFFF}]/gu;
+
+function sanitizeXml(text: string): string {
+  return text.replace(ANSI_PATTERN, '').replace(INVALID_XML_CHARS, '');
+}
+
 function escapeXml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  return sanitizeXml(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function cdata(text: string): string {
+  // A literal "]]>" would end the section early, so split it across two CDATA sections
+  return `<![CDATA[${sanitizeXml(text).replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
 }
 
 export function createJUnitXmlReport(filename: string, filePath: string, testResults: JUnitTestResult[]): void {
@@ -48,7 +67,7 @@ export function createJUnitXmlReport(filename: string, filePath: string, testRes
 
       if (r.result === 'Failed' || r.result === 'Blocked') {
         const msg = escapeXml(r.testCase.comment ?? r.result);
-        return `${open}\n      <failure message="${msg}"><![CDATA[${r.testCase.comment ?? ''}]]></failure>\n${close}`;
+        return `${open}\n      <failure message="${msg}">${cdata(r.testCase.comment ?? '')}</failure>\n${close}`;
       }
 
       if (r.result === 'Not Executed') {
