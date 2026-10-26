@@ -1,5 +1,5 @@
 import { ZephyrTestResult } from './../types/zephyr.types';
-import axios, { Axios, AxiosError } from 'axios';
+import axios, { AxiosError, AxiosInstance } from 'axios';
 import { ZephyrOptions } from '../types/zephyr.types';
 import { inspect } from 'util';
 import { bold, green } from 'picocolors';
@@ -16,7 +16,7 @@ export class ZephyrService {
   private readonly authorizationToken: string;
   private readonly basicAuthToken: string;
   private readonly projectKey: string;
-  private readonly axios: Axios;
+  private readonly axios: AxiosInstance;
   private readonly defaultRunName = `[${new Date().toUTCString()}] - Automated run`;
 
   constructor(options: ZephyrOptions) {
