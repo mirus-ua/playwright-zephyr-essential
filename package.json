@@ -1,6 +1,6 @@
 {
   "name": "playwright-zephyr-essential",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Playwright reporter for Zephyr Scale Cloud, Zephyr Squad (Essential), and Zephyr Server/DC",
   "main": "lib/src/index.js",
   "types": "lib/src/index.d.ts",

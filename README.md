@@ -44,16 +44,10 @@ export default defineConfig({
     [
       'playwright-zephyr-essential/squad',
       {
-        accessKey: process.env.ZEPHYR_ACCESS_KEY, // from Jira → Zephyr → API Keys
-        secretKey: process.env.ZEPHYR_SECRET_KEY, // from Jira → Zephyr → API Keys
-        accountId: process.env.JIRA_ACCOUNT_ID, // your Atlassian account ID
+        token: process.env.ZEPHYR_TOKEN, // Zephyr API access token
         projectKey: 'MYPROJ',
-        testCycle: {
-          name: `Playwright run - ${new Date().toISOString()}`,
-          versionName: 'Unscheduled', // Jira release/version name
-          createNewCycle: true,
-          // folderName:  'Regression',   // optional folder within the cycle
-        },
+        // cycleName: `Playwright run - ${new Date().toISOString()}`, // defaults to "Automated Playwright run - [<UTC date>]"
+        // folderId: 1234, // optional TEST_CYCLE folder; find it via GET /v2/folders?projectKey=MYPROJ&folderType=TEST_CYCLE
       },
     ],
   ],
