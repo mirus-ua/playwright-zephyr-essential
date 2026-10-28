@@ -71,7 +71,9 @@ test('[123] login page renders correctly', async ({ page }) => {
 });
 ```
 
-The number `123` maps to test case `MYPROJ-123` in Zephyr Squad.
+The number `123` maps to test case `MYPROJ-123` in Zephyr Squad. A full key such as `[MYPROJ-123]` is used as is.
+
+With `retries`, only the final attempt of each test is reported. Each test needs its own key: Zephyr Squad rejects the whole upload when one key appears under two different test titles, so the reporter warns about that before uploading.
 
 ### Output
 
