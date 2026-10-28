@@ -1,7 +1,7 @@
 import type { Reporter, TestCase, TestResult } from '@playwright/test/reporter';
 import type { ZephyrSquadOptions } from './zephyr-squad.service';
 
-import { gray } from 'picocolors';
+import { gray, yellow } from 'picocolors';
 
 import { convertStatus } from './convert-status';
 import { createJUnitXmlReport } from './create-report-file';
@@ -20,7 +20,8 @@ type ZephyrSquadTestResult = {
 
 export default class ZephyrSquadReporter implements Reporter {
   private zephyrService!: ZephyrSquadService;
-  private testResults: ZephyrSquadTestResult[] = [];
+  // Keyed by test.id: each retry overwrites the previous attempt, so only the final one is reported
+  private testResults = new Map<string, ZephyrSquadTestResult>();
   private projectKey!: string;
   private testCaseKeyPattern = /\[(.*?)\]/;
   private options: ZephyrSquadOptions;
@@ -37,7 +38,8 @@ export default class ZephyrSquadReporter implements Reporter {
   onTestEnd(test: TestCase, result: TestResult) {
     if (test.title.match(this.testCaseKeyPattern) && test.title.match(this.testCaseKeyPattern)!.length > 1) {
       const [, testCaseId] = test.title.match(this.testCaseKeyPattern)!;
-      const testCaseKey = `${this.projectKey}-${testCaseId}`;
+      // Accept both [T123] and [PROJ-T123]; don't prefix an id that already carries the project key
+      const testCaseKey = testCaseId!.startsWith(`${this.projectKey}-`) ? testCaseId! : `${this.projectKey}-${testCaseId}`;
       // Strip the leading [suffix] bracket from the title for a clean display name
       const title = test.title.replace(this.testCaseKeyPattern, '').trim();
       const status = convertStatus(result.status);
@@ -51,7 +53,7 @@ export default class ZephyrSquadReporter implements Reporter {
           )}</span>`
         : undefined;
 
-      this.testResults.push({
+      this.testResults.set(test.id, {
         result: status,
         testCase: {
           key: testCaseKey,
@@ -63,15 +65,41 @@ export default class ZephyrSquadReporter implements Reporter {
   }
 
   async onEnd() {
-    if (this.testResults.length > 0) {
+    const testResults = [...this.testResults.values()];
+
+    if (testResults.length > 0) {
+      this.warnAboutSharedKeys(testResults);
+
       const testResultsPath = 'test-results/zephyr';
       const reportName = `zephyr-squad-report-${new Date().getTime()}.xml`;
-      createJUnitXmlReport(reportName, testResultsPath, this.testResults);
+      createJUnitXmlReport(reportName, testResultsPath, testResults);
 
       const reportPath = join(process.cwd(), testResultsPath, reportName);
       await this.zephyrService.createRun(reportPath);
     } else {
       console.log(gray(`[zephyr squad reporter]: There's no Zephyr test case id in this spec file`));
+    }
+  }
+
+  // Zephyr rejects the whole JUnit upload ("Test Case Key <key> is missing") when one key appears under different names
+  private warnAboutSharedKeys(testResults: ZephyrSquadTestResult[]) {
+    const titlesByKey = new Map<string, Set<string>>();
+    for (const { testCase } of testResults) {
+      const titles = titlesByKey.get(testCase.key) ?? new Set<string>();
+      titles.add(testCase.title);
+      titlesByKey.set(testCase.key, titles);
+    }
+
+    for (const [key, titles] of titlesByKey) {
+      if (titles.size > 1) {
+        const list = [...titles].map((title) => `  - "${title}"`).join('\n');
+        console.warn(
+          yellow(
+            `[zephyr squad reporter]: Test case key ${key} is used by ${titles.size} tests with different titles:\n${list}\n` +
+              `Zephyr Squad will likely reject the whole upload with "Test Case Key ${key} is missing". Give each test its own key.`,
+          ),
+        );
+      }
     }
   }
 }

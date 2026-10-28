@@ -1,6 +1,6 @@
 {
   "name": "playwright-zephyr-essential",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Playwright reporter for Zephyr Scale Cloud, Zephyr Squad (Essential), and Zephyr Server/DC",
   "main": "lib/src/index.js",
   "types": "lib/src/index.d.ts",
@@ -30,7 +30,8 @@
     "release:patch": "npm run release -- patch",
     "release:minor": "npm run release -- minor",
     "release:major": "npm run release -- major",
-    "format": "prettier --write \"(src|tests)/*.(ts)\""
+    "format": "prettier --write \"(src|tests)/*.(ts)\"",
+    "test": "playwright test -c playwright.unit.config.ts"
   },
   "repository": {
     "type": "git",
