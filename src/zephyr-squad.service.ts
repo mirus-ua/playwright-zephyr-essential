@@ -15,6 +15,10 @@ export interface ZephyrSquadOptions {
   /** Override the auto-generated test cycle name.
    *  Defaults to "Automated Playwright run - <UTC timestamp>". */
   cycleName?: string;
+  /** ID of an existing Zephyr Essential folder (TEST_CYCLE type) to place the
+   *  created test cycle within.  Obtain the ID from the Zephyr Essential UI or
+   *  via GET /v2/folders?projectKey=<key>&folderType=TEST_CYCLE. */
+  folderId?: number;
 }
 
 function isAxiosError(error: unknown): error is AxiosError {
@@ -38,6 +42,7 @@ export class ZephyrSquadService {
   private readonly token: string;
   private readonly projectKey: string;
   private readonly cycleName: string;
+  private readonly folderId: number | undefined;
   private readonly baseUrl = 'https://prod-api.zephyr4jiracloud.com/v2';
 
   constructor(options: ZephyrSquadOptions) {
@@ -46,6 +51,12 @@ export class ZephyrSquadService {
     this.token = options.token.trim();
     this.projectKey = options.projectKey;
     this.cycleName = options.cycleName ?? `Automated Playwright run - [${new Date().toUTCString()}]`;
+
+    // Number(process.env.UNSET) is NaN, which JSON.stringify would send as folderId: null
+    if (options.folderId !== undefined && !Number.isInteger(options.folderId)) {
+      console.warn(yellow(`[zephyr] folderId ${options.folderId} is not an integer, so the test cycle is created without a folder`));
+    }
+    this.folderId = Number.isInteger(options.folderId) ? options.folderId : undefined;
   }
 
   async createRun(testResults: PathLike) {
@@ -56,7 +67,9 @@ export class ZephyrSquadService {
       contentType: 'application/xml',
       filename: 'results.xml',
     });
-    data.append('testCycle', JSON.stringify({ name: this.cycleName }), {
+    const testCyclePayload: { name: string; folderId?: number } = { name: this.cycleName };
+    if (this.folderId !== undefined) testCyclePayload.folderId = this.folderId;
+    data.append('testCycle', JSON.stringify(testCyclePayload), {
       contentType: 'application/json',
       filename: 'blob',
     });
@@ -66,6 +79,7 @@ export class ZephyrSquadService {
     console.log(`[zephyr] Authorization: Bearer ${maskToken(this.token)}`);
     console.log(`[zephyr] projectKey: ${this.projectKey}`);
     console.log(`[zephyr] cycleName:  ${this.cycleName}`);
+    if (this.folderId !== undefined) console.log(`[zephyr] folderId:   ${this.folderId}`);
 
     try {
       const response = await axios({
